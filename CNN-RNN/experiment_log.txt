@@ -1,0 +1,6 @@
+0205
+注意模型预测时要将图片做normalize
+中午的时候用之前loss约为0.4的参数以lr=0.001开始训练，10个epoch后降低lr
+20个epoch之后loss达到了0.25
+下午5点左右将loss从0.25降到0.19 保存在decoder-epoch-step.ckpt中
+epoch 的平均损失从0.19降低到了0.14左右 保存在了new-decoder.ckpt中
