@@ -1,0 +1,2 @@
+label_map 中的id对应关系应该不用排序
+string_int_label_map需要生成，此处直接是用别人提供的.py
