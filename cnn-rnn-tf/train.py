@@ -3,7 +3,7 @@ import numpy as np
 import os
 import argparser
 import cPickle
-
+from model import Encoder, Decoder
 # get data from dataset
 
 
@@ -22,13 +22,13 @@ def pre_porcess(img):
 def evaluate():
     pass
 
-
+def main(argv):
 #   trianing 
-config = tf.ConfigProto()
-config.gpu_options.allow_growth = True
-config.allow_soft_placement = True
-with tf.Session(config=config) as sess:
-
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    config.allow_soft_placement = True
+    with tf.Session(config=config) as sess:
+        pass
 
 if __name__ == '__main__':
     parser = argparser.ArgumentParser()
