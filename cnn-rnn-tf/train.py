@@ -1,10 +1,14 @@
 import tensorflow as tf 
 import numpy as np 
 import os
-import argparser
+import argparse
 import cPickle
-from model import Encoder, Decoder
-# get data from dataset
+from model import CNN_Encoder, Decoder
+
+
+shuffle_pool_size = 4000
+
+
 
 
 # pre-process image for training
@@ -17,18 +21,55 @@ def pre_porcess(img):
     std_img = tf.image.per_image_standardization(img)
     return std_img
 
+# get data from dataset
+def get_dataset(record_name_):
+    record_path_ = os.path.join(data_folder_name, data_path_name, record_name_)
+    data_set_ = tf.data.TFRecordDataset(record_path_)
+    return data_set_.map(__parse_function_csv)
+
 
 # eval
 def evaluate():
     pass
 
-def main(argv):
+def main(args):
 #   trianing 
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     config.allow_soft_placement = True
     with tf.Session(config=config) as sess:
-        pass
+        data_set_train = get_dataset('my_train.record')
+        data_set_train = data_set_train.shuffle(shuffle_pool_size).batch(args.batch_size).repeat()
+        data_set_train_iter = data_set_train.make_one_shot_iterator()
+        train_handle = sess.run(data_set_train_iter.string_handle)
+        # !!
+
+        imgs = tf.placeholder(tf.float32, [args.batch_size, 224, 224, 3])
+        captions = tf.placeholder(tf.float32, [args.batch_size, None])
+        cnn_model = CNN_Encoder(imgs)
+        imgs_feats = cnn_model.conv5_3
+        decoder = Decoder(imgs_feats, captions)
+        for epoch in range(args.epoch):
+            imgs_batch, captions_batch = sess.run([])
+            _, time_step = captions_batch.size()
+            embeddings = sess.run([decoder.concat_embedding],feed_dict={})
+            for i in range(time_step):
+                feas = sess.run([decoder.context], feed_dict = {imgs: imgs_batch,
+                                                    captions: captions_batch,
+                                                    hx: None})
+                inputs = tf.concat([feas, embeddings[:,i,:] ], -1) # -1??
+                decoder.hx, decoder.cx = decoder.lstm_cell(inputs) # ???
+
+            loss = None
+            sess.run(train_step)
+            if epoch % 100 == 0:
+                train_loss = sess.run([])
+
+
+        
+
+
+
 
 if __name__ == '__main__':
     parser = argparser.ArgumentParser()
@@ -41,9 +82,9 @@ if __name__ == '__main__':
     #Moddel parameter
     parser.add_argument('--learning_rate', type=float, default=0.001, help='learning rate for optimizer')
     parser.add_argument('--batch_size', type=int, default=128, help='batch size for training ')
-    parser.add_argument('--', type=, default=, help='')
-    parser.add_argument('--', type=, default=, help='')
-    parser.add_argument('--', type=, default=, help='')
-    parser.add_argument('--', type=, default=, help='')
+    # parser.add_argument('--', type=, default=, help='')
+    # parser.add_argument('--', type=, default=, help='')
+    # parser.add_argument('--', type=, default=, help='')
+    # parser.add_argument('--', type=, default=, help='')
 
     

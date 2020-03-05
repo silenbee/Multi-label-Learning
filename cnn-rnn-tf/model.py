@@ -3,7 +3,7 @@ import numpy as np
 import os
 from tensorflow.nn import rnn_cell
 
-class Encoder():
+class CNN_Encoder():
     def __init__(self, imgs):
         self.parameters = []
         self.imgs = imgs
@@ -87,10 +87,10 @@ class Encoder():
         print("-----------CNN Weight Loaded------------")
 
 class Decoder():
-    def __init__(self, feats, captions, lengths):
+    def __init__(self, feats, captions):
         self.feats = feats
         self.captions = captions
-        self.lengths = lengths
+        # self.lengths = lengths
 
         self.parameters = []
         self.vocab_size = None  # count later
@@ -130,15 +130,18 @@ class Decoder():
         self.cap_embed = tf.nn.embedding_lookup(self.embeddings, self.captions)
         self.mean_feats = tf.reduce_mean(self.feats, 1) # unsqueeze
         self.concat_embedding = tf.concat([self.mean_feats, self.cap_embed], 1)
-        
+
         cell_fun = rnn_cell.BasicLSTMCell
         cell = cell_fun(1024, state_is_tuple=True)
         self.cell = rnn_cell.MultiRNNCell([cell], state_is_tuple=True)
         state = self.cell.zero_state(1024, tf.float32) # !!
         
-        self.softmax_w = tf.get_variable("softmax_w", [rnn_size, len_words])
-        self.softmax_b = tf.get_variable("softmax_b", [len_words])
-
+        output, last_state = tf.nn.dynamic_rnn(cell, self.concat_embedding, initial_state=state, scope="rnn")
+        output = tf.nn.dropout(output, 0.5)
+        self.softmax_w = tf.get_variable("softmax_w", [1024, self.vocab_size])
+        self.softmax_b = tf.get_variable("softmax_b", [self.vocab_size])
+        logits = tf.matmul(output, self.softmax_w) + self.softmax_b
+        probs = tf.nn.softmax(logits)
 
     def caption_gen(self):
         batch_size, time_step = self.captions.size() #   may have problems
