@@ -22,7 +22,7 @@ flags.DEFINE_string('set', 'train', 'Convert training set, validation set or '
                     'merged set.')
 flags.DEFINE_string('annotations_dir', 'Annotations',
                     '(Relative) path to annotations directory.')
-flags.DEFINE_string('output_path', 'E:\\training_data\\cnn-rnn-data-process\\my_train.record', 'Path to output TFRecord')
+flags.DEFINE_string('output_path', 'E:\\training_data\\cnn-rnn-data-process\\my_train1.record', 'Path to output TFRecord')
 flags.DEFINE_string('label_map_path', 'E:\\training_data\\VOCdevkit\\pascal_label_map.pbtxt',
                     'Path to label map proto')
 flags.DEFINE_boolean('ignore_difficult_instances', False, 'Whether to ignore '
@@ -75,16 +75,19 @@ def dict_to_tf_example(data,
     """
     img_path = os.path.join(data['folder'], image_subdirectory, data['filename'])
     full_path = os.path.join(dataset_directory, img_path)
-    with tf.gfile.GFile(full_path, 'rb') as fid:
-        encoded_jpg = fid.read()
-    encoded_jpg_io = io.BytesIO(encoded_jpg)
-    image = PIL.Image.open(encoded_jpg_io)
-    if image.format != 'JPEG':
-        raise ValueError('Image format not JPEG')
-    key = hashlib.sha256(encoded_jpg).hexdigest()
+    image = PIL.Image.open(full_path)
+    image_bytes = image.tobytes()
+    # with tf.gfile.GFile(full_path, 'rb') as fid:
+    #     encoded_jpg = fid.read()
+    # encoded_jpg_io = io.BytesIO(encoded_jpg)
+    # image = PIL.Image.open(encoded_jpg_io)
+    # if image.format != 'JPEG':
+    #     raise ValueError('Image format not JPEG')
+    # key = hashlib.sha256(encoded_jpg).hexdigest()
     
     width = int(data['size']['width'])
     height = int(data['size']['height'])
+    depth = int(data['size']['depth'])
     classes = []
     classes_text = []
     classes_tmp = []
@@ -112,12 +115,14 @@ def dict_to_tf_example(data,
     example = tf.train.Example(features=tf.train.Features(feature={
         'image/height': dataset_util.int64_feature(height),
         'image/width': dataset_util.int64_feature(width),
+        'image/depth': dataset_util.int64_feature(depth),
         'image/filename': dataset_util.bytes_feature(
             data['filename'].encode('utf8')),
         'image/source_id': dataset_util.bytes_feature(
             data['filename'].encode('utf8')),
-        'image/key/sha256': dataset_util.bytes_feature(key.encode('utf8')),
-        'image/encoded': dataset_util.bytes_feature(encoded_jpg),
+        # 'image/key/sha256': dataset_util.bytes_feature(key.encode('utf8')),
+        'image/encoded' : dataset_util.bytes_feature(image_bytes),
+        # 'image/encoded': dataset_util.bytes_feature(encoded_jpg),
         'image/format': dataset_util.bytes_feature('jpeg'.encode('utf8')),
         'image/object/class/text': dataset_util.bytes_list_feature(classes_text),
         'image/object/class/label': dataset_util.int64_list_feature(classes),
