@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np 
 import os
 import argparse
-import cPickle
+import pickle
 from model import CNN_Encoder, Decoder
 
 
@@ -20,12 +20,6 @@ def pre_porcess(img):
     image = tf.image.random_flip_up_down(image)
     std_img = tf.image.per_image_standardization(img)
     return std_img
-
-# get data from dataset
-def get_dataset(record_name_):
-    record_path_ = os.path.join(data_folder_name, data_path_name, record_name_)
-    data_set_ = tf.data.TFRecordDataset(record_path_)
-    return data_set_.map(__parse_function_csv)
 
 
 # eval

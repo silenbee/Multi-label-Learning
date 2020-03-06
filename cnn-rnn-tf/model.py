@@ -10,7 +10,7 @@ class CNN_Encoder():
         self.convlayers()
         self.fc_layers()
 
-        self.feat = self.fc6
+        self.feat = self.conv5_3
     
     def maxpool(self,name,input_data, trainable):
         out = tf.nn.max_pool(input_data,[1,2,2,1],[1,2,2,1],padding="SAME",name=name)
@@ -82,7 +82,7 @@ class CNN_Encoder():
         weights = np.load(weight_file)
         keys = sorted(weights.keys())
         for i, k in enumerate(keys):
-            if i < 29:
+            if i < 26:
                 sess.run(self.parameters[i].assign(weights[k]))
         print("-----------CNN Weight Loaded------------")
 
