@@ -3,11 +3,12 @@ import hashlib
 import io
 import logging
 import os
-
+from build_vocab_v2 import Vocabulary
 from collections import Counter
 from lxml import etree
 import PIL.Image
 import tensorflow as tf
+import pickle
 
 #import dataset_util
 #import label_map_util
@@ -73,8 +74,12 @@ def dict_to_tf_example(data,
     Raises:
         ValueError: if the image pointed to by data['filename'] is not a valid JPEG
     """
+    with open("E:\\training_data\\cnn-rnn-data-process\\zh_vocab.pkl", 'rb') as f:
+        vocab = pickle.load(f)
+    
     img_path = os.path.join(data['folder'], image_subdirectory, data['filename'])
-    full_path = os.path.join(dataset_directory, img_path)
+    full_path = os.path.join("E:\\Code\\python\\multi-label\\Multiple-instance-learning-master\\CNN_RNN\\data\\resized2007", data['filename'])
+    # full_path = os.path.join(dataset_directory, img_path)
     image = PIL.Image.open(full_path)
     image_bytes = image.tobytes()
     # with tf.gfile.GFile(full_path, 'rb') as fid:
@@ -106,12 +111,20 @@ def dict_to_tf_example(data,
     # relist classes and classes_text  
     classes_tmp = list(classes_set)
     classes_tmp.sort(key=takefreq,reverse=True)
+    # add <start> 
+    classes_text.append('<start>'.encode('utf-8'))
+    classes.append(1)
+    # append label id
     for i in range(len(classes_tmp)):
         # print(classes_tmp[i])
-        classes.append(label_map_dict[classes_tmp[i]])
+        classes.append(vocab(classes_tmp[i]))
         classes_text.append(classes_tmp[i].encode('utf-8'))
-    # print(classes_tmp)
-
+    # add <end>
+    classes_text.append('<end>'.encode('utf-8'))
+    classes.append(2)
+    # print(classes_text)
+    # print(classes)
+    
     example = tf.train.Example(features=tf.train.Features(feature={
         'image/height': dataset_util.int64_feature(height),
         'image/width': dataset_util.int64_feature(width),
