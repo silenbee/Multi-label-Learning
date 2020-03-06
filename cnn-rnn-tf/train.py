@@ -55,8 +55,9 @@ def main(args):
             image, w, h, c, caption,caption_number, name = sess.run(fetches=train_iter)
             image = pre_process(np.array(image).reshape(32, 256, 256, 3))
             image = sess.run(image)
+            caption_number = sess.run(tf.sparse_tensor_to_dense(caption_number))
 
-            batch_size, time_step = caption.size() # ??
+            _, time_step = caption_number.shape # ??
             decoder.hx = tf.zeros([args.batch_size, 1024])
             decoder.cx = tf.zeros([args.batch_size, 1024])
             predicts = tf.zeros([args.batch_size, time_step, args.vocab_size])

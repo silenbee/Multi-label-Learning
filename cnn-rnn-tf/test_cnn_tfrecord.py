@@ -41,21 +41,20 @@ def main(args):
         image, w, h, c, caption,caption_number, name = sess.run(fetches=train_iter)
         image = pre_process(np.array(image).reshape(32, 256, 256, 3))
         image = sess.run(image)
-        print(image.shape)
-        # print(sess.run(tf.sparse_tensor_to_dense(caption_number)))
+        print("image shape: ",image.shape)
+        caption_number = sess.run(tf.sparse_tensor_to_dense(caption_number))
+        print("caption: ", caption_number)
+        batch_size, time_step = caption_number.shape
+        print("caption size: ", batch_size, time_step)
 
-
-        # image = pre_porcess(np.reshape(image,newshape=[h[0],w[0],c[0]]))
-        # image = np.array(image).reshape(1, 224, 224, 3)
-
-        imgs = tf.placeholder(tf.float32, [None, 224, 224, 3])
-        captions = tf.placeholder(tf.float32, [args.batch_size, None])
-        cnn_model = CNN_Encoder(imgs)
-        cnn_model.load_weights('E:\\Code\\vgg16_weights.npz', sess)
-        imgs_feats = cnn_model.conv5_3
-        feat = sess.run([imgs_feats], feed_dict={imgs: image})
-        feat = np.array(feat).reshape(32, 196, 512)
-        print(feat.shape)
+        # imgs = tf.placeholder(tf.float32, [None, 224, 224, 3])
+        # captions = tf.placeholder(tf.float32, [args.batch_size, None])
+        # cnn_model = CNN_Encoder(imgs)
+        # cnn_model.load_weights('E:\\Code\\vgg16_weights.npz', sess)
+        # imgs_feats = cnn_model.conv5_3
+        # feat = sess.run([imgs_feats], feed_dict={imgs: image})
+        # feat = np.array(feat).reshape(32, 196, 512)
+        # print(feat.shape)
         
 
         
