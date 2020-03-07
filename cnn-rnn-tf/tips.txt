@@ -1,4 +1,14 @@
+0307之前：
 label_map 中的id对应关系应该不用排序
 string_int_label_map需要生成，此处直接是用别人提供的.py
 注意<beg><end>添加
 <pad> 设为了0， 但不清楚 tf中0会不会保留有其他作用
+注意小物体 缺点描述
+
+0307：
+1.  之前rnn错用conv 应改成fc， 使用自己的fc好像不能不能批运算
+暂用contrib库，尝试用scope保存contrib.fully_connected的权重
+2.  context是用 *，而非矩阵乘法
+3.  train文件幅值decoder.hx不知能否赋值？
+4.  predicts改用numpy而非tf，train中频繁切换，性能？
+5.  predict全为零，是因为init_state为0（最好是这样），还是有别的错误

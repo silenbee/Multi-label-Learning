@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np 
 import os
 from tensorflow.nn import rnn_cell
+from tensorflow.contrib.layers.python.layers import initializers
 
 class CNN_Encoder():
     def __init__(self, imgs):
@@ -88,7 +89,7 @@ class CNN_Encoder():
 class Decoder():
     def __init__(self, feats, captions):
         self.feats = feats
-        self.captions = captions
+        self.captions = tf.cast(captions, dtype=tf.int32)
         # self.lengths = lengths
         self.batch_size = 32
         self.parameters = []
@@ -97,57 +98,91 @@ class Decoder():
         self.vis_num = 196
         self.hidden_dim = 1024
 
+        self.initializer = initializers.xavier_initializer()
+
+        self.hx = tf.get_variable("hx", [self.batch_size, 1024],initializer=tf.constant_initializer(0.0))
+        self.cx = tf.get_variable("cx", [self.batch_size, 1024],initializer=tf.constant_initializer(0.0))
+
         self.attention()
         self.decolayer()
+        
 
     def saver(self):
         # variables_to_restore = tf.contrib.framework.get_variables_to_restore(include=['rcnn'])
         # saver = tf.train.Saver(variables_to_restore)
         # return saver
         return tf.train.Saver(self.parameters)
-        
+
+    def fc(self,name,input_data,out_channel,trainable = True, bias=True):
+        shape = input_data.get_shape().as_list()
+        print("shape:", len(shape))
+        if len(shape) == 4:
+            size = shape[-1] * shape[-2] * shape[-3]
+        elif len(shape) == 3:
+            size = shape[-1] * shape[-2]
+        else:size = shape[1]
+        input_data_flat = tf.reshape(input_data,[-1,size])
+        with tf.variable_scope(name):
+            weights = tf.get_variable(name="weights",shape=[size,out_channel],dtype=tf.float32,trainable = trainable,initializer=self.initializer)
+            res = tf.matmul(input_data_flat,weights)
+            if bias:
+                biases = tf.get_variable(name="biases",shape=[out_channel],dtype=tf.float32,trainable = trainable,initializer=tf.constant_initializer(0.0))
+                res = tf.nn.bias_add(res,biases)
+                self.parameters += [biases]
+            # out = tf.nn.relu(tf.nn.bias_add(res,biases))
+        self.parameters += [weights]
+        return res
+
     def conv(self,name, input_data, out_channel, trainable, bias=True):
         in_channel = input_data.get_shape()[-1]
         with tf.variable_scope(name):
-            kernel = tf.get_variable("weights", [3, 3, in_channel, out_channel], dtype=tf.float32,trainable=False)
+            kernel = tf.get_variable("weights", [3, 3, in_channel, out_channel], dtype=tf.float32,trainable=False,initializer=self.initializer)
             res = tf.nn.conv2d(input_data, kernel, [1, 1, 1, 1], padding="SAME")
             if bias:
-                biases = tf.get_variable("biases", [out_channel], dtype=tf.float32,trainable=False)
+                biases = tf.get_variable("biases", [out_channel], dtype=tf.float32,trainable=False,initializer=tf.constant_initializer(0.0))
                 res = tf.nn.bias_add(res, biases)
+                self.parameters += [biases]
             # out = tf.nn.relu(res, name=name)
-        self.parameters += [kernel, biases]
+        self.parameters += [kernel]
         return res
 
 
     def attention(self):
         # self att biaas move to init
-        self.att_bias = tf.get_variable("att_bias", [self.vis_num], dtype=tf.float32,trainable=True) #should be zero
+        self.att_bias = tf.get_variable("att_bias", [self.vis_num], dtype=tf.float32,trainable=True,initializer=tf.constant_initializer(0.0)) #should be zero
         self.parameters += [self.att_bias]
-        self.att_vw = self.conv("att_vw",self.feats,self.vis_dim,trainable=True,bias=False)
-        self.att_hw = self.conv("att_hw",self.hx,self.vis_dim,trainable=True,bias=False) #unsqeeze
-        # self.att_bias = 
+        with tf.variable_scope('fc'):
+            self.att_vw = tf.contrib.layers.fully_connected(inputs=self.feats,num_outputs=self.vis_dim,activation_fn=None,trainable=True)
+            self.att_hw = tf.contrib.layers.fully_connected(inputs=self.hx,num_outputs=self.vis_dim,activation_fn=None,trainable=True)
+        # self.att_vw = self.fc("att_vw",self.feats,self.vis_dim,trainable=True,bias=False)
+        # self.att_hw = self.fc("att_hw",self.hx,self.vis_dim,trainable=True,bias=False) #unsqeeze
+        print("vw.shape: ",self.att_vw.shape)   # (32, 196, 512)
+        print("hw.shape: ",tf.expand_dims(self.att_hw, 1).shape)  # (32, 1, 512)
+        print("bias.shape: ",tf.reshape(self.att_bias, [1, -1, 1]).shape) # (1, 196, 1)
         self.att_relu = tf.nn.relu(self.att_vw + tf.expand_dims(self.att_hw, 1) + tf.reshape(self.att_bias, [1, -1, 1]), name="att_full")
-        self.att_w = self.conv("att_w", self.att_relu, 1, trainable=True,bias=False)
-        self.att_alpha = tf.nn.softmax(self.att_w) # dim=1
-        self.context = tf.reduce_sum(tf.matmul(self.feats, self.att_alpha), 1)
+        self.att_w = tf.contrib.layers.fully_connected(inputs=self.att_relu,num_outputs=1,activation_fn=None,trainable=True)
+        # self.att_w = self.fc("att_w", self.att_relu, 1, trainable=True,bias=False)
+        self.att_alpha = tf.nn.softmax(self.att_w, dim=1) # dim=1
+        self.context = tf.reduce_sum(self.feats*self.att_alpha, 1) # not matmul , * !!
         
 
     def decolayer(self):
-        self.embeddings = tf.get_variable("embedding", [self.vocab_size, 512])
+        self.embeddings = tf.get_variable("embedding", [self.vocab_size, 512], initializer=self.initializer)
         self.parameters += [self.embeddings]
         self.cap_embed = tf.nn.embedding_lookup(self.embeddings, self.captions)
         self.mean_feats = tf.expand_dims(tf.reduce_mean(self.feats, 1), 1) # unsqueeze
         self.concat_embedding = tf.concat([self.mean_feats, self.cap_embed], 1)
 
-        self.hx = tf.get_variable("hx", [self.batch_size, 1024])
-        self.cx = tf.get_variable("cx", [self.batch_size, 1024])
-        self.linear = self.conv("linear",self.hx,self.vocab_size,trainable=True,bias=True)
+        # self.hx = tf.get_variable("hx", [self.batch_size, 1024],initializer=tf.constant_initializer(0.0))
+        # self.cx = tf.get_variable("cx", [self.batch_size, 1024],initializer=tf.constant_initializer(0.0))
+        self.linear = tf.contrib.layers.fully_connected(inputs=self.hx,num_outputs=self.vocab_size,activation_fn=None,trainable=True)
+        # self.linear = self.fc("linear",self.hx,self.vocab_size,trainable=True,bias=True)
 
         cell_fun = rnn_cell.BasicLSTMCell
         cell = cell_fun(1024, state_is_tuple=True)
         self.cell = rnn_cell.MultiRNNCell([cell], state_is_tuple=True)
         self.parameters += [self.cell.weights]
-        self.init_cell_state = self.cell.zero_state(1, tf.float32) # !!
+        self.init_cell_state = self.cell.zero_state(self.batch_size, tf.float32) # !!
         
         # output, last_state = tf.nn.dynamic_rnn(cell, self.concat_embedding, initial_state=state, scope="rnn")
         # output = tf.nn.dropout(output, 0.5)
