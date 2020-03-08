@@ -100,8 +100,10 @@ class Decoder():
 
         self.initializer = initializers.xavier_initializer()
 
+        self.hx_p = tf.placeholder(tf.float32, shape=[self.batch_size, 1024], name="initial_state_h")
         self.hx = tf.get_variable("hx", [self.batch_size, 1024],initializer=tf.constant_initializer(0.0))
         self.cx = tf.get_variable("cx", [self.batch_size, 1024],initializer=tf.constant_initializer(0.0))
+        print("self.cx", self.cx)
 
         self.attention()
         self.decolayer()
@@ -178,12 +180,12 @@ class Decoder():
         self.linear = tf.contrib.layers.fully_connected(inputs=self.hx,num_outputs=self.vocab_size,activation_fn=None,trainable=True)
         # self.linear = self.fc("linear",self.hx,self.vocab_size,trainable=True,bias=True)
 
-        cell_fun = rnn_cell.BasicLSTMCell
-        cell = cell_fun(1024, state_is_tuple=True)
-        self.cell = rnn_cell.MultiRNNCell([cell], state_is_tuple=True)
+        self.cell_fun = rnn_cell.BasicLSTMCell
+        self.cell_ = self.cell_fun(1024, state_is_tuple=True)
+        self.cell = rnn_cell.MultiRNNCell([self.cell_], state_is_tuple=True)
         self.parameters += [self.cell.weights]
         self.init_cell_state = self.cell.zero_state(self.batch_size, tf.float32) # !!
-        
+        # print("init_cell shape:", self.init_cell_state.shape)
         # output, last_state = tf.nn.dynamic_rnn(cell, self.concat_embedding, initial_state=state, scope="rnn")
         # output = tf.nn.dropout(output, 0.5)
         # self.softmax_w = tf.get_variable("softmax_w", [1024, self.vocab_size])
@@ -195,6 +197,9 @@ class Decoder():
         self.saver().restore(sess, weight_file)
         print("-----------decoder loaded---------------")
 
+
+    def trainable_var(self):
+        return tf.trainable_variables()
 
     # def caption_gen(self):
     #     batch_size, time_step = self.captions.size() #   may have problems

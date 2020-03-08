@@ -12,3 +12,6 @@ string_int_label_map需要生成，此处直接是用别人提供的.py
 3.  train文件幅值decoder.hx不知能否赋值？
 4.  predicts改用numpy而非tf，train中频繁切换，性能？
 5.  predict全为零，是因为init_state为0（最好是这样），还是有别的错误
+
+0308：
+hx部分的计算为动态的，tf暂时无解， 定义好hx部分的计算， 然后循环time_step次sess.run 
