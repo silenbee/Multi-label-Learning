@@ -9,7 +9,7 @@ class CNN_Encoder():
         self.parameters = []
         self.imgs = imgs
         self.convlayers()
-        # self.fc_layers()
+        self.fc_layers()
 
         self.feat = self.conv5_3
     
@@ -87,9 +87,10 @@ class CNN_Encoder():
         print("-----------CNN Weight Loaded------------")
 
 class Decoder():
-    def __init__(self):
-        # self.feats = feats
-        # self.captions = tf.cast(captions, dtype=tf.int32)
+    def __init__(self, feats, captions):
+        self.feats = feats
+        self.captions = tf.cast(captions, dtype=tf.int32)
+        # self.lengths = lengths
         self.batch_size = 32
         self.parameters = []
         self.vocab_size = 24  # count later
@@ -98,16 +99,14 @@ class Decoder():
         self.hidden_dim = 1024
 
         self.initializer = initializers.xavier_initializer()
-        # params set
+
+        self.hx_p = tf.placeholder(tf.float32, shape=[self.batch_size, 1024], name="initial_state_h")
         self.hx = tf.get_variable("hx", [self.batch_size, 1024],initializer=tf.constant_initializer(0.0))
         self.cx = tf.get_variable("cx", [self.batch_size, 1024],initializer=tf.constant_initializer(0.0))
-        
-        self.embeddings = tf.get_variable("embedding", [self.vocab_size, 512], initializer=self.initializer)
-        self.att_bias = tf.get_variable("att_bias", [self.vis_num], dtype=tf.float32,trainable=True,initializer=tf.constant_initializer(0.0)) #should be zero
-        
-        self.cell_fun = rnn_cell.BasicLSTMCell
-        self.cell_ = self.cell_fun(1024, state_is_tuple=True)
-        self.cell = rnn_cell.MultiRNNCell([self.cell_], state_is_tuple=True)
+        print("self.cx", self.cx)
+
+        self.attention()
+        self.decolayer()
         
 
     def saver(self):
@@ -150,40 +149,24 @@ class Decoder():
         return res
 
 
-    def attention(self, features, hiddens):
-        att_fea = tf.contrib.layers.fully_connected(inputs=features,num_outputs=self.vis_dim,activation_fn=None,trainable=True,weights_initializer=self.initializer,reuse=tf.AUTO_REUSE,scope="att_v")
-        att_h = tf.contrib.layers.fully_connected(inputs=hiddens,num_outputs=self.vis_dim,activation_fn=None,trainable=True,weights_initializer=self.initializer,reuse=tf.AUTO_REUSE,scope="att_h")
+    def attention(self):
+        # self att biaas move to init
+        self.att_bias = tf.get_variable("att_bias", [self.vis_num], dtype=tf.float32,trainable=True,initializer=tf.constant_initializer(0.0)) #should be zero
+        self.parameters += [self.att_bias]
+        with tf.variable_scope('fc'):
+            self.att_vw = tf.contrib.layers.fully_connected(inputs=self.feats,num_outputs=self.vis_dim,activation_fn=None,trainable=True)
+            self.att_hw = tf.contrib.layers.fully_connected(inputs=self.hx_p,num_outputs=self.vis_dim,activation_fn=None,trainable=True)
+        # self.att_vw = self.fc("att_vw",self.feats,self.vis_dim,trainable=True,bias=False)
+        # self.att_hw = self.fc("att_hw",self.hx,self.vis_dim,trainable=True,bias=False) #unsqeeze
+        print("vw.shape: ",self.att_vw.shape)   # (32, 196, 512)
+        print("hw.shape: ",tf.expand_dims(self.att_hw, 1).shape)  # (32, 1, 512)
+        print("bias.shape: ",tf.reshape(self.att_bias, [1, -1, 1]).shape) # (1, 196, 1)
+        self.att_relu = tf.nn.relu(self.att_vw + tf.expand_dims(self.att_hw, 1) + tf.reshape(self.att_bias, [1, -1, 1]), name="att_full")
+        self.att_w = tf.contrib.layers.fully_connected(inputs=self.att_relu,num_outputs=1,activation_fn=None,trainable=True)
+        # self.att_w = self.fc("att_w", self.att_relu, 1, trainable=True,bias=False)
+        self.att_alpha = tf.nn.softmax(self.att_w, dim=1) # dim=1
+        self.context = tf.reduce_sum(self.feats*self.att_alpha, 1) # not matmul , * !!
         
-        att_full = tf.nn.relu(att_fea + tf.expand_dims(att_h, 1) + tf.reshape(self.att_bias, [1, -1, 1]))
-        att_out = tf.contrib.layers.fully_connected(inputs=att_full,num_outputs=1,activation_fn=None,trainable=True,weights_initializer=self.initializer,reuse=tf.AUTO_REUSE,scope="att_out")
-        alpha = tf.nn.softmax(att_out, dim=1)
-        context = tf.reduce_sum(features*alpha, 1)
-        return context, alpha
-
-    def forward(self, features, captions):
-        cap_embed = tf.nn.embedding_lookup(self.embeddings, captions)
-        feats = tf.expand_dims(tf.reduce_mean(features, 1), 1)
-        concat_embed = tf.concat([feats, cap_embed], 1)
-        
-        batch_size, _ = captions.shape
-        # predicts = tf.zeros([batch_size, time_step, self.vocab_size])
-        predicts = []
-        hx = tf.zeros([batch_size, 1024])
-        cx = self.cell.zero_state(self.batch_size, tf.float32)
-        
-        for i in range(5):
-            feas,_ = self.attention(features, hx)
-            inputs = tf.concat([feas, concat_embed[:,i,:]], -1)
-            hx, cx = self.cell(inputs, cx)
-            # print("hx shape:", hx.shape)
-
-            output = tf.contrib.layers.fully_connected(inputs=hx,num_outputs=self.vocab_size,activation_fn=None,trainable=True,weights_initializer=self.initializer,reuse=tf.AUTO_REUSE,scope="output")
-            # print("output_shape:", output.shape)
-            predicts.append(output)
-        r_predicts = tf.transpose(tf.reshape(predicts,[-1, batch_size, self.vocab_size]), perm=[1,0,2])
-        print("r_predicts shape: ", r_predicts.shape)
-        return r_predicts
-     
 
     def decolayer(self):
         self.embeddings = tf.get_variable("embedding", [self.vocab_size, 512], initializer=self.initializer)
@@ -194,7 +177,7 @@ class Decoder():
 
         # self.hx = tf.get_variable("hx", [self.batch_size, 1024],initializer=tf.constant_initializer(0.0))
         # self.cx = tf.get_variable("cx", [self.batch_size, 1024],initializer=tf.constant_initializer(0.0))
-        self.linear = tf.contrib.layers.fully_connected(inputs=self.hx,num_outputs=self.vocab_size,activation_fn=None,trainable=True)
+        self.linear = tf.contrib.layers.fully_connected(inputs=self.hx_p,num_outputs=self.vocab_size,activation_fn=None,trainable=True)
         # self.linear = self.fc("linear",self.hx,self.vocab_size,trainable=True,bias=True)
 
         self.cell_fun = rnn_cell.BasicLSTMCell
@@ -215,9 +198,6 @@ class Decoder():
         print("-----------decoder loaded---------------")
 
 
-    def trainable_var(self):
-        return tf.trainable_variables()
-
     # def caption_gen(self):
     #     batch_size, time_step = self.captions.size() #   may have problems
     #     self.a_hiddens = tf.zeros(batch_size, 1024)
@@ -228,21 +208,3 @@ class Decoder():
     #         self.a_hiddens, state = tf.nn.dynamic_rnn(self.cell, input, time_major=False)
     #         logits = tf.matmul(self.a_hiddens, self.softmax_w) + self.softmax_b
     #         probs = tf.nn.softmax(logits)
-
-    def attention_deprec(self):
-        # self att biaas move to init
-        self.att_bias = tf.get_variable("att_bias", [self.vis_num], dtype=tf.float32,trainable=True,initializer=tf.constant_initializer(0.0)) #should be zero
-        self.parameters += [self.att_bias]
-        with tf.variable_scope('fc'):
-            self.att_vw = tf.contrib.layers.fully_connected(inputs=self.feats,num_outputs=self.vis_dim,activation_fn=None,trainable=True)
-            self.att_hw = tf.contrib.layers.fully_connected(inputs=self.hx,num_outputs=self.vis_dim,activation_fn=None,trainable=True)
-        # self.att_vw = self.fc("att_vw",self.feats,self.vis_dim,trainable=True,bias=False)
-        # self.att_hw = self.fc("att_hw",self.hx,self.vis_dim,trainable=True,bias=False) #unsqeeze
-        print("vw.shape: ",self.att_vw.shape)   # (32, 196, 512)
-        print("hw.shape: ",tf.expand_dims(self.att_hw, 1).shape)  # (32, 1, 512)
-        print("bias.shape: ",tf.reshape(self.att_bias, [1, -1, 1]).shape) # (1, 196, 1)
-        self.att_relu = tf.nn.relu(self.att_vw + tf.expand_dims(self.att_hw, 1) + tf.reshape(self.att_bias, [1, -1, 1]), name="att_full")
-        self.att_w = tf.contrib.layers.fully_connected(inputs=self.att_relu,num_outputs=1,activation_fn=None,trainable=True)
-        # self.att_w = self.fc("att_w", self.att_relu, 1, trainable=True,bias=False)
-        self.att_alpha = tf.nn.softmax(self.att_w, dim=1) # dim=1
-        self.context = tf.reduce_sum(self.feats*self.att_alpha, 1) # not matmul , * !!

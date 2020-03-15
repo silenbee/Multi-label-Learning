@@ -36,33 +36,37 @@ def main(args):
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     config.allow_soft_placement = True
+
+    # data_set_train = get_dataset('my_train.record')
+    # data_set_train = data_set_train.shuffle(shuffle_pool_size).batch(args.batch_size).repeat()
+    # data_set_train_iter = data_set_train.make_one_shot_iterator()
+    # train_handle = sess.run(data_set_train_iter.string_handle)
+    # # !!
+    train_iter = get_iter()
+    imgs = tf.placeholder(tf.float32, [args.batch_size, 224, 224, 3])
+    cnn_model = CNN_Encoder(imgs)
+    
+    imgs_feats = cnn_model.conv5_3
+
+    decoder = Decoder()
+    
+    captions = tf.placeholder(tf.int32, [args.batch_size, None])
+    cnn_feats = tf.placeholder(tf.float32, [args.batch_size, 196, 512])
+
+    op = decoder.forward(cnn_feats, captions)
+    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=op,labels=captions)
+    cost = tf.reduce_mean(loss)
+
+    learning_rate = args.learning_rate
+    # tvars = decoder.trainable_var()
+    tvars = tf.trainable_variables()
+    # print("tvars: ", tvars)
+    grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars), 5)
+    optimizer = tf.train.AdamOptimizer(learning_rate)
+    train_op = optimizer.apply_gradients(zip(grads, tvars))
+
     with tf.Session(config=config) as sess:
-        # data_set_train = get_dataset('my_train.record')
-        # data_set_train = data_set_train.shuffle(shuffle_pool_size).batch(args.batch_size).repeat()
-        # data_set_train_iter = data_set_train.make_one_shot_iterator()
-        # train_handle = sess.run(data_set_train_iter.string_handle)
-        # # !!
-        train_iter = get_iter()
-        imgs = tf.placeholder(tf.float32, [args.batch_size, 224, 224, 3])
-        captions = tf.placeholder(tf.float32, [args.batch_size, None])
-        cnn_feats = tf.placeholder(tf.float32, [args.batch_size, 196, 512])
-        cnn_model = CNN_Encoder(imgs)
         cnn_model.load_weights('E:\\Code\\vgg16_weights.npz', sess)
-        imgs_feats = cnn_model.conv5_3
-
-        decoder = Decoder(cnn_feats, captions)
-
-        # loop def          for i in range(captions.shape[1]):
-        j = 0
-        feas = decoder.context
-        input = tf.concat((feas, decoder.concat_embedding[:,j,:]), axis=-1)
-        input = tf.reshape(input, [32,1,1024])
-        print("input.shape: ", input.shape)
-        hx, cx = tf.nn.dynamic_rnn(decoder.cell, input, initial_state=decoder.init_cell_state)
-        op = tf.assign(decoder.hx, tf.reshape(hx,[32, 1024]))
-        output = decoder.linear
-
-
         sess.run(tf.global_variables_initializer())
         for epoch in range(args.epoch):
             image, w, h, c, caption,caption_number, name = sess.run(fetches=train_iter)
@@ -73,39 +77,9 @@ def main(args):
             s_img_feats = sess.run([imgs_feats], feed_dict={imgs: image})
             s_img_feats = np.array(s_img_feats).reshape(32, 196, 512)
             
-            predicts = np.zeros((args.batch_size, caption_number.shape[1], args.vocab_size))
-
-            j = 0
-            for i in range(caption_number.shape[1]):
-                sess.run([op], feed_dict={cnn_feats: s_img_feats, captions: caption_number})
-                out = sess.run([output], feed_dict={cnn_feats: s_img_feats, captions: caption_number})
-                predicts[:,i,:] = np.array(out).reshape(32, 24)
-            
-            print(predicts)
-            targets = np.array(caption_number).reshape(-1)
-            predicts = np.array(predicts).reshape(-1, 24)
-            print("predict shape: ", tf.convert_to_tensor(np.array(predicts)).shape)
-            print("target shape: ", tf.convert_to_tensor(np.array(targets)).shape)
-            loss = tf.contrib.legacy_seq2seq.sequence_loss_by_example([predicts], [targets], [tf.ones_like(targets, dtype=tf.float64)], args.vocab_size)
-            cost = tf.reduce_mean(loss)
-            learning_rate = args.learning_rate
-            tvars = decoder.trainable_var()
-            # tvars = tf.trainable_variables()
-            grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars), 5)
-            optimizer = tf.train.AdamOptimizer(learning_rate)
-            train_op = optimizer.apply_gradients(zip(grads, tvars))
-
-            train_loss, _ = sess.run([cost, train_op],
-                                                feed_dict={})
-            print("train_loss: ", train_loss)
-
-            print("done once")
-
-                
-
-           
-                
-            
+            _, tloss = sess.run([train_op, cost], feed_dict={cnn_feats: s_img_feats, captions: caption_number})
+            print("cost:", tloss)    
+        
 
     print("train end!")
 
@@ -121,7 +95,7 @@ if __name__ == '__main__':
     parser.add_argument('--caption_path', type=str, default='data/annotations/img_cap.txt', help='path of caption file')
     parser.add_argument('--log_step', type=int, default=10, help='step size for log info')
     parser.add_argument('--save_step', type=int, default=50, help='step size for saving params')
-    parser.add_argument('--epoch', type=int, default=3, help='training epoch num')
+    parser.add_argument('--epoch', type=int, default=6, help='training epoch num')
     #Moddel parameter
     parser.add_argument('--learning_rate', type=float, default=0.001, help='learning rate for optimizer')
     parser.add_argument('--batch_size', type=int, default=32, help='batch size for training ')

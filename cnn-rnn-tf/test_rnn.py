@@ -5,6 +5,7 @@ import argparse
 import pickle
 from model import CNN_Encoder, Decoder
 from read_record import get_iter
+from tensorflow.nn import rnn_cell
 
 shuffle_pool_size = 4000
 
@@ -68,23 +69,32 @@ def main(args):
             embeddings = sess.run([decoder.concat_embedding],feed_dict={cnn_feats: s_img_feats,captions: caption_number})
             embeddings = np.array(embeddings).reshape(args.batch_size, -1, 512)
             print("embedding shape:", embeddings.shape)
+
+            cell_fun = rnn_cell.BasicLSTMCell
+            cell = cell_fun(1024, state_is_tuple=True)
+            cell = rnn_cell.MultiRNNCell([cell], state_is_tuple=True)
+            cx = cell.zero_state(32, tf.float32)
+            print(cx)
             for i in range(time_step):
                 feas = sess.run([decoder.context], feed_dict = {cnn_feats: s_img_feats,
                                                     captions: caption_number,
                                                     })
                 feas = np.array(feas).reshape(args.batch_size, 512)
                 inputs = np.concatenate((feas, embeddings[:,i,:]),axis=-1).reshape(32, 1, 1024)
+                # inputs = tf.concat([feas, embeddings[:,i,:]], axis=-1) # -1??
                 print("inputs shape", tf.convert_to_tensor(inputs).shape)
                 print("inputs:", inputs)
-                # inputs = tf.concat([feas, embeddings[:,i,:]], axis=-1) # -1??
-                decoder.hx, decoder.cx = tf.nn.dynamic_rnn(decoder.cell, inputs, initial_state=decoder.init_cell_state, scope='rnnlm') # ??? time major false
+                tmp = [rnn_cell.LSTMStateTuple(tf.convert_to_tensor(sess.run([decoder.hx])), tf.convert_to_tensor(sess.run([decoder.cx])))]
+                print("tmp: ", tmp)
+                decoder.hx, decoder.cx = tf.nn.dynamic_rnn(decoder.cell, inputs, initial_state = tmp, scope='rnnlm') # ??? time major false
                 output = sess.run([decoder.linear], feed_dict = {cnn_feats: s_img_feats,
                                                     captions: caption_number,
                                                     })
+                print("output: ", np.array(output))
                 print("output.shape:", tf.convert_to_tensor(np.array(output)).shape)   # (1, 32, 24)
                 predicts[:,i,:] = np.array(output).reshape(32, 24)
             
-            print("predicts:", predicts)
+            # print("predicts:", predicts)
             print("predict shape: ", tf.convert_to_tensor(np.array(predicts)).shape) # (32, 5, 24)
 
             # loss = tf.contrib.legacy_seq2seq.sequence_loss_by_example([predicts], [], [tf.ones_like(targets, dtype=tf.float32)], args.vocab_size)
