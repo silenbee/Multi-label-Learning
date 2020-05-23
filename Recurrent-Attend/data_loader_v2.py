@@ -9,9 +9,9 @@ from PIL import Image
 from build_vocab_v2 import Vocabulary
 from pycocotools.coco import COCO
 
-def get_ids_and_caption(file):
+def get_ids_and_caption(json):
     """Build a simple vocabulary wrapper."""
-    with open('data/annotations/img_tag.txt','r') as file:
+    with open(json,'r') as file:
         tokenlist = []
         ids = []
         for line in file:
@@ -38,8 +38,9 @@ class CocoDataset(data.Dataset):
         #self.ids = list(self.coco.anns.keys())
         self.vocab = vocab
         self.transform = transform
-        self.ext_eye = np.vstack((np.zeros(20), np.eye(20)))    # tackle index zero as padding 
-
+        # self.ext_eye = np.vstack((np.zeros(20), np.eye(20)))    # tackle index zero as padding 
+        self.ext_eye = np.eye(21)
+    
     def __getitem__(self, index):
         """Returns one data pair (image and caption)."""
         # coco = self.coco
@@ -75,7 +76,7 @@ class CocoDataset(data.Dataset):
 
         # get one-hot caption tensor
         # ext_eye = np.vstack((np.zeros(20), np.eye(20))) # tackle index zero as padding 
-        one_hot = np.zeros(20)
+        one_hot = np.zeros(21)
         # print("caption: ", caption)
         # print("ext_eye[caption]: ", self.ext_eye[caption])
         one_hot += self.ext_eye[caption].sum(axis=0)
@@ -118,12 +119,12 @@ def collate_fn(data):
         targets[i, :end] = cap[:end]  
 
     # Merge one_hot_targets (from tuple of 1D tensor to 2D tensor).
-    o_h_target = torch.zeros(len(one_hot_targets), 20).long()
+    o_h_target = torch.zeros(len(one_hot_targets), 21).long()
     for i, one_hot in enumerate(one_hot_targets):
-        end = 20
+        end = 21
         o_h_target[i, :end] = one_hot[:end]  
 
-    return images, targets, o_h_target
+    return images, targets, o_h_target, lengths
 
 def get_loader(root, json, vocab, transform, batch_size, shuffle, num_workers):
     """Returns torch.utils.data.DataLoader for custom coco dataset."""
